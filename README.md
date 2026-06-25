@@ -1,6 +1,6 @@
-# 🚀 Pantry Web App - Production & Hosting Guide
+# My Pantry Recipes - Production & Hosting Guide
 
-Welcome to the production-ready build for **Pantry Web**, a full-stack recipe manager and matching engine powered by Vite (React + TypeScript) and a lightweight Express backend.
+Welcome to the production-ready build for **My Pantry Recipes**, a full-stack recipe manager and matching engine powered by Vite (React + TypeScript), Supabase Auth, and a lightweight Express backend.
 
 This codebase is optimized to run seamlessly in local dev, in containers (e.g., Docker, Cloud Run), and on cloud application hosters.
 
@@ -57,7 +57,7 @@ A production-ready **`Dockerfile`** featuring a multi-stage, secure Alpine build
    ```
 2. Build and launch the container on GCP with one command:
    ```bash
-   gcloud run deploy pantry-web \
+   gcloud run deploy my-pantry-recipes \
      --source . \
      --allow-unauthenticated \
      --region us-central1 \
@@ -107,7 +107,7 @@ For VM droplets, Cafe24 hosting, or direct private servers:
    sudo npm install -g pm2
    
    # Launch Compiled Node server
-   pm2 start dist/server.cjs --name "pantry-web"
+   pm2 start dist/server.cjs --name "my-pantry-recipes"
    
    # Retain process across system reboots
    pm2 startup

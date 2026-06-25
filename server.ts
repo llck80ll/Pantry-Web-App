@@ -43,6 +43,22 @@ import fs from "fs";
 import { BASE_RECIPES } from "./src/recipesData";
 
 const RECIPES_DB_PATH = path.join(process.cwd(), "src", "recipes_db.json");
+const GEMINI_FORMULATION_TIMEOUT_MS = 8000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 function getLocalRecipes() {
   try {
@@ -224,52 +240,56 @@ app.post("/api/recipe/recommend", async (req, res) => {
 Also suggest other standard pantry items (like seasonings, olive oil, salt, water, garlic, butter) as needed to round out each recipe.
 Return the result in JSON format as a list of recipe objects. Ensure each recipe has realistic details, step-by-step instructions, and proper ingredient category allocations (Produce, Meat, Dairy, Grains, Fruits, Pantry, Dry Seasonings).`;
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING, description: "Short, appealing name for the dish" },
-                  description: { type: Type.STRING, description: "A one-sentence mouthwatering description" },
-                  prepTime: { type: Type.INTEGER, description: "Estimated prep time in minutes" },
-                  cookTime: { type: Type.INTEGER, description: "Estimated cook time in minutes" },
-                  servings: { type: Type.INTEGER, description: "Typically 2 or 4" },
-                  difficulty: { type: Type.STRING, description: "'Easy' or 'Medium' or 'Hard'" },
-                  tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Cuisine tags, e.g., Italian, Asian, Comfort Food, Vegetarian, etc." },
-                  allIngredients: {
-                    type: Type.ARRAY,
-                    items: {
+        const response = await withTimeout(
+          ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING, description: "Short, appealing name for the dish" },
+                    description: { type: Type.STRING, description: "A one-sentence mouthwatering description" },
+                    prepTime: { type: Type.INTEGER, description: "Estimated prep time in minutes" },
+                    cookTime: { type: Type.INTEGER, description: "Estimated cook time in minutes" },
+                    servings: { type: Type.INTEGER, description: "Typically 2 or 4" },
+                    difficulty: { type: Type.STRING, description: "'Easy' or 'Medium' or 'Hard'" },
+                    tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Cuisine tags, e.g., Italian, Asian, Comfort Food, Vegetarian, etc." },
+                    allIngredients: {
+                      type: Type.ARRAY,
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          name: { type: Type.STRING },
+                          amount: { type: Type.STRING, description: "Units like 200g, 1 tbsp, 2 whole, etc." },
+                          category: { type: Type.STRING, description: "One of Grains, Meat, Dairy, Produce, Fruits, Pantry, Dry Seasonings" }
+                        },
+                        required: ["name", "amount", "category"]
+                      }
+                    },
+                    instructions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    nutritionalInfo: {
                       type: Type.OBJECT,
                       properties: {
-                        name: { type: Type.STRING },
-                        amount: { type: Type.STRING, description: "Units like 200g, 1 tbsp, 2 whole, etc." },
-                        category: { type: Type.STRING, description: "One of Grains, Meat, Dairy, Produce, Fruits, Pantry, Dry Seasonings" }
+                        calories: { type: Type.INTEGER },
+                        protein: { type: Type.STRING },
+                        carbs: { type: Type.STRING },
+                        fat: { type: Type.STRING }
                       },
-                      required: ["name", "amount", "category"]
+                      required: ["calories", "protein", "carbs", "fat"]
                     }
                   },
-                  instructions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  nutritionalInfo: {
-                    type: Type.OBJECT,
-                    properties: {
-                      calories: { type: Type.INTEGER },
-                      protein: { type: Type.STRING },
-                      carbs: { type: Type.STRING },
-                      fat: { type: Type.STRING }
-                    },
-                    required: ["calories", "protein", "carbs", "fat"]
-                  }
-                },
-                required: ["name", "description", "prepTime", "cookTime", "servings", "difficulty", "tags", "allIngredients", "instructions", "nutritionalInfo"]
+                  required: ["name", "description", "prepTime", "cookTime", "servings", "difficulty", "tags", "allIngredients", "instructions", "nutritionalInfo"]
+                }
               }
             }
-          }
-        });
+          }),
+          GEMINI_FORMULATION_TIMEOUT_MS,
+          "Gemini formulation"
+        );
 
         if (response && response.text) {
           const formulated = JSON.parse(response.text.trim());
@@ -318,7 +338,7 @@ Return the result in JSON format as a list of recipe objects. Ensure each recipe
 
       // Filter/Prioritize custom cuisine choice
       let cuisineMatch = false;
-      if (cuisine && cuisine !== "All" && cuisine.trim() !== "") {
+      if (cuisine && cuisine !== "All" && cuisine !== "Any" && cuisine.trim() !== "") {
         const cuisineNorm = cuisine.toLowerCase().trim();
         cuisineMatch = base.tags.some(tag => tag.toLowerCase() === cuisineNorm);
       } else {

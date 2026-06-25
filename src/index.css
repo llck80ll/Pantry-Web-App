@@ -80,9 +80,8 @@ html, body, header, section, main, div, button, h1, h2, h3, h4, p, span, h6, lab
 /* Soft-orange/amber backings fallback to dark slate */
 .dark .bg-orange-50,
 .dark .bg-orange-50\/50,
-.dark .bg-[#FAF8F5],
-.dark .bg-[#FAF2E5],
-.dark .bg-[#FAF8F5]\/60,
+.dark .bg-\[\#FAF8F5\],
+.dark .bg-\[\#FAF2E5\],
 .dark .bg-\[\#FAF8F5\]\/60 {
   background-color: #171620 !important;
   border-color: #242232 !important;

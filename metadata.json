@@ -1,6 +1,6 @@
 {
-  "name": "Pantry Web",
-  "description": "Pantry app to generate recipes based on ingredients you have.",
+  "name": "My Pantry Recipes",
+  "description": "Recipe app to generate meal ideas from ingredients in your pantry.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

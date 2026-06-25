@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import type { User } from "@supabase/supabase-js";
 import { Recipe } from "./types";
 import RecipeCard from "./components/RecipeCard";
 import RecipeDetail from "./components/RecipeDetail";
+import { DEFAULT_USER_STATE, isSupabaseConfigured, supabase, type PantryProfile } from "./supabaseClient";
 import { 
   getTranslatedRecipe, 
   translateIngredientName, 
@@ -28,7 +30,11 @@ import {
   Moon,
   Users,
   ChevronDown,
-  Search
+  Search,
+  LogOut,
+  Mail,
+  Lock,
+  UserRound
 } from "lucide-react";
 
 // Categorized most common/popular ingredients for 1-tap select accessibility
@@ -636,7 +642,257 @@ const PANTRY_PRESETS = [
   { name: "Seafood Pasta 🍝", ingredients: ["Shrimp", "Pasta", "Garlic", "Lemon", "Olive Oil", "Tomatoes", "Butter"] }
 ];
 
+const DEFAULT_PANTRY_INGREDIENTS = [
+  "Chicken Breast",
+  "Eggs",
+  "Garlic",
+  "Olive Oil",
+  "Onions",
+  "Pasta",
+  "Salt & Pepper"
+];
+
+const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free", "Low-Carb", "High-Protein"];
+
+function AuthScreen() {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [householdSize, setHouseholdSize] = useState(2);
+  const [cookingLevel, setCookingLevel] = useState("home_cook");
+  const [dietaryPreferences, setDietaryPreferences] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggleDiet = (item: string) => {
+    setDietaryPreferences((prev) =>
+      prev.includes(item) ? prev.filter((entry) => entry !== item) : [...prev, item]
+    );
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setMessage(null);
+
+    if (!supabase) {
+      setError("Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.");
+      return;
+    }
+
+    if (mode === "register" && !name.trim()) {
+      setError("Please enter your name.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (mode === "login") {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (signInError) throw signInError;
+      } else {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            data: {
+              name: name.trim(),
+              household_size: householdSize,
+              cooking_level: cookingLevel,
+              dietary_preferences: dietaryPreferences,
+            },
+          },
+        });
+        if (signUpError) throw signUpError;
+        setMessage("Account created. Check your email if Supabase requires confirmation, then sign in.");
+        setMode("login");
+      }
+    } catch (err: any) {
+      setError(err.message || "Authentication failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-[#0c0b11] flex items-center justify-center p-5 font-sans">
+      <div className="w-full max-w-5xl grid lg:grid-cols-[1.05fr_0.95fr] bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 rounded-3xl overflow-hidden shadow-xl">
+        <div className="p-8 sm:p-10 bg-gradient-to-br from-indigo-50 via-white to-amber-50 dark:from-zinc-950 dark:via-zinc-950 dark:to-indigo-950/30 border-b lg:border-b-0 lg:border-r border-zinc-200 dark:border-zinc-850">
+          <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center mb-8 shadow-sm">
+            <ChefHat className="w-6 h-6" />
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
+            My Pantry Recipes keeps your kitchen memory.
+          </h1>
+          <p className="mt-4 text-sm sm:text-base leading-relaxed text-zinc-600 dark:text-zinc-350 max-w-lg">
+            Sign in to save your ingredient pantry and starred recipes across devices.
+          </p>
+          <div className="mt-8 grid sm:grid-cols-2 gap-3 text-sm">
+            {["Saved pantry items", "Starred recipes", "Food preferences", "Meal-planning ready"].map((item) => (
+              <div key={item} className="flex items-center gap-2 text-zinc-700 dark:text-zinc-250 font-semibold">
+                <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 sm:p-8 dark:bg-[#121118]">
+          <div className="flex bg-zinc-100 dark:bg-zinc-900 p-1 rounded-2xl mb-6 border border-zinc-200 dark:border-zinc-800">
+            {(["login", "register"] as const).map((entry) => (
+              <button
+                key={entry}
+                type="button"
+                onClick={() => {
+                  setMode(entry);
+                  setError(null);
+                  setMessage(null);
+                }}
+                className={`flex-1 rounded-xl py-2 text-sm font-bold transition-all ${
+                  mode === entry
+                    ? "bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                }`}
+              >
+                {entry === "login" ? "Log in" : "Register"}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-4">
+            {mode === "register" && (
+              <label className="block">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-zinc-500">Name</span>
+                <div className="mt-1.5 flex items-center gap-2 rounded-2xl border border-zinc-200 dark:border-zinc-800 px-3 bg-white dark:bg-zinc-900">
+                  <UserRound className="w-4 h-4 text-zinc-400" />
+                  <input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    className="w-full bg-transparent py-3 text-sm outline-none text-zinc-900 dark:text-white"
+                    placeholder="Charlie Kim"
+                    autoComplete="name"
+                  />
+                </div>
+              </label>
+            )}
+
+            <label className="block">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-zinc-500">Email</span>
+              <div className="mt-1.5 flex items-center gap-2 rounded-2xl border border-zinc-200 dark:border-zinc-800 px-3 bg-white dark:bg-zinc-900">
+                <Mail className="w-4 h-4 text-zinc-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="w-full bg-transparent py-3 text-sm outline-none text-zinc-900 dark:text-white"
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  required
+                />
+              </div>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-zinc-500">Password</span>
+              <div className="mt-1.5 flex items-center gap-2 rounded-2xl border border-zinc-200 dark:border-zinc-800 px-3 bg-white dark:bg-zinc-900">
+                <Lock className="w-4 h-4 text-zinc-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="w-full bg-transparent py-3 text-sm outline-none text-zinc-900 dark:text-white"
+                  placeholder="At least 6 characters"
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  minLength={6}
+                  required
+                />
+              </div>
+            </label>
+
+            {mode === "register" && (
+              <>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-zinc-500">Household</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={householdSize}
+                      onChange={(event) => setHouseholdSize(Number(event.target.value))}
+                      className="mt-1.5 w-full rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-3 text-sm text-zinc-900 dark:text-white outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-zinc-500">Cooking level</span>
+                    <select
+                      value={cookingLevel}
+                      onChange={(event) => setCookingLevel(event.target.value)}
+                      className="mt-1.5 w-full rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-3 text-sm text-zinc-900 dark:text-white outline-none"
+                    >
+                      <option value="beginner">Beginner</option>
+                      <option value="home_cook">Home cook</option>
+                      <option value="confident">Confident</option>
+                      <option value="advanced">Advanced</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div>
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-zinc-500">Diet preferences</span>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {DIETARY_OPTIONS.map((item) => {
+                      const selected = dietaryPreferences.includes(item);
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => toggleDiet(item)}
+                          className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
+                            selected
+                              ? "bg-indigo-600 border-indigo-600 text-white"
+                              : "bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300"
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {error && <p className="mt-4 text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 rounded-xl p-3">{error}</p>}
+          {message && <p className="mt-4 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 rounded-xl p-3">{message}</p>}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="mt-6 w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-black text-sm transition-all active:scale-98"
+          >
+            {submitting ? "Working..." : mode === "login" ? "Log in to My Pantry Recipes" : "Create My Pantry Recipes Account"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [authLoading, setAuthLoading] = useState(true);
+  const [userDataLoading, setUserDataLoading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<PantryProfile | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [hasLoadedRemoteState, setHasLoadedRemoteState] = useState(false);
+
   const [insight, setInsight] = useState<string>(() => {
     const randomIndex = Math.floor(Math.random() * HEALTHY_INSIGHTS.length);
     return HEALTHY_INSIGHTS[randomIndex];
@@ -663,15 +919,7 @@ export default function App() {
         // Fallback to defaults
       }
     }
-    return [
-      "Chicken Breast",
-      "Eggs",
-      "Garlic",
-      "Olive Oil",
-      "Onions",
-      "Pasta",
-      "Salt & Pepper"
-    ];
+    return DEFAULT_PANTRY_INGREDIENTS;
   });
 
   useEffect(() => {
@@ -784,7 +1032,7 @@ export default function App() {
   }, [activeCategory]);
   
   // Strict mode: requires >= 90% matches
-  const [isStrictMode, setIsStrictMode] = useState(true);
+  const [isStrictMode, setIsStrictMode] = useState(false);
   const [selectedCuisine, setSelectedCuisine] = useState<string>("Any");
   const [lang] = useState<"en" | "ko">("en");
   const [servings, setServings] = useState<number>(4);
@@ -932,6 +1180,104 @@ export default function App() {
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
   useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
+
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setUser(data.session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setHasLoadedRemoteState(false);
+      if (!session?.user) {
+        setProfile(null);
+        setFavorites([]);
+        setSelectedRecipe(null);
+        setActiveTab("recommend");
+      }
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || !user) return;
+
+    let cancelled = false;
+    const loadUserData = async () => {
+      setUserDataLoading(true);
+      setSyncError(null);
+      try {
+        const [{ data: profileData, error: profileError }, { data: stateData, error: stateError }] = await Promise.all([
+          supabase
+            .from("pantry_profiles")
+            .select("id,name,household_size,cooking_level,dietary_preferences")
+            .eq("id", user.id)
+            .maybeSingle(),
+          supabase
+            .from("pantry_user_state")
+            .select("selected_ingredients,favorite_recipes")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+        ]);
+
+        if (profileError) throw profileError;
+        if (stateError) throw stateError;
+        if (cancelled) return;
+
+        setProfile((profileData as PantryProfile | null) ?? {
+          id: user.id,
+          name: user.user_metadata?.name || user.email?.split("@")[0] || "Pantry user",
+          household_size: user.user_metadata?.household_size ?? null,
+          cooking_level: user.user_metadata?.cooking_level ?? null,
+          dietary_preferences: user.user_metadata?.dietary_preferences ?? [],
+        });
+
+        const remoteState = stateData ?? DEFAULT_USER_STATE;
+        const remoteIngredients = Array.isArray(remoteState.selected_ingredients)
+          ? remoteState.selected_ingredients
+          : [];
+        const remoteFavorites = Array.isArray(remoteState.favorite_recipes)
+          ? remoteState.favorite_recipes
+          : [];
+
+        if (remoteIngredients.length > 0 || remoteFavorites.length > 0) {
+          setSelectedIngredients(remoteIngredients.length > 0 ? remoteIngredients : DEFAULT_PANTRY_INGREDIENTS);
+          setFavorites(remoteFavorites as Recipe[]);
+        } else {
+          await supabase.from("pantry_user_state").upsert({
+            user_id: user.id,
+            selected_ingredients: selectedIngredients,
+            favorite_recipes: favorites,
+          });
+        }
+
+        setHasLoadedRemoteState(true);
+      } catch (err: any) {
+        setSyncError(err.message || "Unable to load your saved pantry.");
+      } finally {
+        if (!cancelled) setUserDataLoading(false);
+      }
+    };
+
+    loadUserData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
     if (cookingStarted) {
       setIsPantryCollapsed(true);
       setIsPreferencesCollapsed(true);
@@ -993,6 +1339,27 @@ export default function App() {
     } else {
       updateFavoritesList([...favorites, recipe]);
     }
+  };
+
+  useEffect(() => {
+    if (!supabase || !user || !hasLoadedRemoteState) return;
+
+    const timeout = window.setTimeout(async () => {
+      const { error } = await supabase.from("pantry_user_state").upsert({
+        user_id: user.id,
+        selected_ingredients: selectedIngredients,
+        favorite_recipes: favorites,
+      });
+
+      setSyncError(error ? error.message : null);
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [favorites, hasLoadedRemoteState, selectedIngredients, user?.id]);
+
+  const handleLogout = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
   };
 
   const handleClearAllIngredients = () => {
@@ -1225,6 +1592,50 @@ export default function App() {
     };
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-[#0c0b11] flex items-center justify-center font-sans">
+        <div className="text-center">
+          <ChefHat className="w-10 h-10 text-indigo-600 mx-auto animate-pulse" />
+          <p className="mt-3 text-sm font-bold text-zinc-600 dark:text-zinc-300">Loading My Pantry Recipes...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-[#0c0b11] flex items-center justify-center p-6 font-sans">
+        <div className="max-w-xl w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 rounded-3xl p-8 shadow-xl">
+          <ChefHat className="w-10 h-10 text-indigo-600 mb-5" />
+          <h1 className="text-2xl font-black text-zinc-950 dark:text-white">Supabase setup required</h1>
+          <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-350">
+            Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to your environment, then restart the app to enable login and saved pantry data.
+          </p>
+          <div className="mt-5 rounded-2xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-4 text-xs font-mono text-zinc-700 dark:text-zinc-300">
+            VITE_SUPABASE_URL=https://your-project.supabase.co<br />
+            VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  if (userDataLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-[#0c0b11] flex items-center justify-center font-sans">
+        <div className="text-center">
+          <ChefHat className="w-10 h-10 text-indigo-600 mx-auto animate-pulse" />
+          <p className="mt-3 text-sm font-bold text-zinc-600 dark:text-zinc-300">Loading your saved pantry...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-[#0c0b11] flex flex-col font-sans selection:bg-indigo-600 selection:text-white relative overflow-hidden" id="snapcook-app">
       
@@ -1241,7 +1652,7 @@ export default function App() {
           </div>
           <div className="flex flex-col gap-0.5 items-start">
             <h1 className="text-zinc-900 dark:text-white font-sans font-black text-lg tracking-tight leading-none">
-              <span>{lang === "ko" ? "마이클린 팬트리" : "Pantry"}</span>
+              <span>{lang === "ko" ? "마이클린 팬트리" : "My Pantry Recipes"}</span>
             </h1>
             <p className="text-[10px] text-zinc-400 dark:text-zinc-500 font-bold tracking-wider uppercase font-sans leading-none mt-1">
               {lang === "ko" ? "★ 신선한 식재료 요리 비서 ★" : "★ Smart Kitchen Companions ★"}
@@ -1304,8 +1715,33 @@ export default function App() {
               <Moon className="w-4 h-4 text-zinc-700 stroke-[2.5]" />
             )}
           </button>
+
+          <div className="flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 pl-3 pr-1.5 py-1 shadow-sm">
+            <div className="hidden sm:flex flex-col leading-none text-right">
+              <span className="text-[10px] font-black text-zinc-900 dark:text-white max-w-[140px] truncate">
+                {profile?.name || user.email}
+              </span>
+              <span className="text-[8px] font-bold uppercase tracking-wider text-zinc-400">
+                Signed in
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="p-2 rounded-full text-zinc-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
+              title="Log out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
+
+      {syncError && (
+        <div className="mx-6 mt-4 rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-xs font-bold text-rose-700 dark:text-rose-300">
+          Supabase sync issue: {syncError}
+        </div>
+      )}
 
       {/* Primary Grid Layout */}
       <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 md:px-8 py-8">
@@ -1357,7 +1793,7 @@ export default function App() {
                     </div>
                     <div>
                       <h3 className="text-zinc-900 dark:text-white font-extrabold text-sm tracking-tight leading-snug">
-                        {lang === "ko" ? "마이클린 팬트리에 오신 것을 환영합니다!" : "Welcome to Pantry!"}
+                        {lang === "ko" ? "마이클린 팬트리에 오신 것을 환영합니다!" : "Welcome to My Pantry Recipes!"}
                       </h3>
                       <p className="text-zinc-500 dark:text-zinc-400 text-xs mt-1 leading-relaxed font-normal">
                         {lang === "ko" 
@@ -2394,7 +2830,7 @@ export default function App() {
                             className="bg-white dark:bg-[#121118] border border-zinc-200/80 dark:border-zinc-850 rounded-2xl p-3 flex flex-col min-h-[320px] shadow-3xs"
                           >
                             <span className="text-[11px] font-extrabold uppercase tracking-widest text-indigo-900 dark:text-indigo-400 font-mono border-b border-zinc-100 dark:border-zinc-800/80 pb-1.5 mb-2.5 text-center">
-                              {lang === "ko" ? dayLabelsKo[day] : day.substr(0,3) + "day"}
+                              {lang === "ko" ? dayLabelsKo[day] : day.toUpperCase()}
                             </span>
                             
                             <div className="space-y-3 flex-1 flex flex-col justify-between">
@@ -2832,7 +3268,7 @@ export default function App() {
 
       {/* Modern footer details */}
       <footer className="bg-white dark:bg-zinc-950 border-t border-zinc-200/80 dark:border-zinc-850 py-5 text-center text-zinc-400 text-[10px] font-mono leading-none flex-shrink-0 mt-12">
-        Pantry &copy; {new Date().getFullYear()} • Powered by local offline database matching engine
+        My Pantry Recipes &copy; {new Date().getFullYear()} • Powered by local offline database matching engine
       </footer>
 
     </div>
